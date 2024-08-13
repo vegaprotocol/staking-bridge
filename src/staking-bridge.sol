@@ -4,6 +4,8 @@ pragma solidity ^0.8.13;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./IStake.sol";
 
+error BalanceTooLow();
+
 /// @title ERC20 Staking Bridge
 /// @author Vega Protocol
 /// @notice This contract manages the vesting of the Vega V2 ERC20 token
@@ -33,6 +35,9 @@ contract StakingBridge is IStake {
     /// @param amount Amount of tokens to remove from staking
     /// @param vegaPublicKey Target Vega public key from which to deduct stake
     function removeStake(uint256 amount, bytes32 vegaPublicKey) public {
+        if (stakes[msg.sender][vegaPublicKey] < amount) {
+            revert BalanceTooLow();
+        }
         stakes[msg.sender][vegaPublicKey] -= amount;
         require(IERC20(_stakingToken).transfer(msg.sender, amount));
         emit StakeRemoved(msg.sender, amount, vegaPublicKey);

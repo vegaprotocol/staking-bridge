@@ -32,7 +32,7 @@ contract StakingBridgeTest is Test {
     // tokens and emits Stake_Deposited event (0071-STAK-001)
     function test_LocksTokenAndEmitEvent() public {
         bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
-	address user = address(1337);
+        address user = address(1337);
 
         assertEq(bridge.totalStaked(), 0);
 

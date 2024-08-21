@@ -2,22 +2,25 @@
 pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./IStake.sol";
-
-error BalanceTooLow();
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IStake} from "./IStake.sol";
 
 /// @title ERC20 Staking Bridge
 /// @author Vega Protocol
 /// @notice This contract manages the vesting of the Vega V2 ERC20 token
 contract StakingBridge is IStake {
-    address _stakingToken;
+    using SafeERC20 for IERC20;
 
-    constructor(address token) {
-        _stakingToken = token;
+    error InsufficientBalance(address user, bytes32 vegaPublicKey, uint256 stakeBalance, uint256 needed);
+
+    IERC20 public immutable token;
+
+    constructor(address tokenAddress) {
+        token = IERC20(tokenAddress);
     }
 
     /// @dev user => amount staked
-    mapping(address => mapping(bytes32 => uint256)) stakes;
+    mapping(address user => mapping(bytes32 vegaPublicKey => uint256 stakingBalance)) stakes;
 
     /// @notice This stakes the given amount of tokens and credits them to the provided Vega public key
     /// @param amount Token amount to stake
@@ -25,9 +28,16 @@ contract StakingBridge is IStake {
     /// @dev Emits StakeDeposited event
     /// @dev User MUST run "approve" on token prior to running Stake
     function stake(uint256 amount, bytes32 vegaPublicKey) public {
-        require(IERC20(_stakingToken).transferFrom(msg.sender, address(this), amount));
+        token.transferFrom(msg.sender, address(this), amount);
         stakes[msg.sender][vegaPublicKey] += amount;
         emit StakeDeposited(msg.sender, amount, vegaPublicKey);
+    }
+
+    function stake(uint256 amount, bytes32 vegaPublicKey, address owner) public {
+        token.transferFrom(msg.sender, address(this), amount);
+        stakes[owner][vegaPublicKey] += amount;
+        emit StakeDeposited(msg.sender, amount, vegaPublicKey);
+        emit StakeTransferred(msg.sender, amount, owner, vegaPublicKey);
     }
 
     /// @notice This removes specified amount of stake of available to user
@@ -35,11 +45,12 @@ contract StakingBridge is IStake {
     /// @param amount Amount of tokens to remove from staking
     /// @param vegaPublicKey Target Vega public key from which to deduct stake
     function removeStake(uint256 amount, bytes32 vegaPublicKey) public {
-        if (stakes[msg.sender][vegaPublicKey] < amount) {
-            revert BalanceTooLow();
-        }
+        uint256 currentStake = stakes[msg.sender][vegaPublicKey];
+        require(
+            amount <= currentStake, InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake)
+        );
         stakes[msg.sender][vegaPublicKey] -= amount;
-        require(IERC20(_stakingToken).transfer(msg.sender, amount));
+        token.transfer(msg.sender, amount);
         emit StakeRemoved(msg.sender, amount, vegaPublicKey);
     }
 
@@ -49,15 +60,13 @@ contract StakingBridge is IStake {
     /// @param newAddress Target ETH address to recieve the stake
     /// @param vegaPublicKey Target Vega public key to be credited with the transfer
     function transferStake(uint256 amount, address newAddress, bytes32 vegaPublicKey) public {
+        uint256 currentStake = stakes[msg.sender][vegaPublicKey];
+        require(
+            amount <= currentStake, InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake)
+        );
         stakes[msg.sender][vegaPublicKey] -= amount;
         stakes[newAddress][vegaPublicKey] += amount;
         emit StakeTransferred(msg.sender, amount, newAddress, vegaPublicKey);
-    }
-
-    /// @dev This is IStake.stakingToken
-    /// @return the address of the token that is able to be staked
-    function stakingToken() external view override returns (address) {
-        return _stakingToken;
     }
 
     /// @dev This is IStake.stakeBalance
@@ -71,6 +80,12 @@ contract StakingBridge is IStake {
     /// @dev This is IStake.totalStaked
     /// @return total tokens staked on contract
     function totalStaked() external view override returns (uint256) {
-        return IERC20(_stakingToken).balanceOf(address(this));
+        return token.balanceOf(address(this));
+    }
+
+    /// @dev This is IStake.stakingToken
+    /// @return total tokens staked on contract
+    function stakingToken() external view returns (address) {
+        return address(token);
     }
 }

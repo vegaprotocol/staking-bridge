@@ -3,7 +3,8 @@ pragma solidity ^0.8.13;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {BalanceTooLow, StakingBridge} from "../src/staking-bridge.sol";
+import {StakingBridge} from "../src/StakingBridge.sol";
+import {IStake} from "../src/IStake.sol";
 
 contract TestERC20 is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
@@ -139,7 +140,7 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.stakeBalance(user2, pkey), 10);
 
         // now user1 try to removeStake
-        vm.expectRevert(BalanceTooLow.selector);
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.InsufficientBalance.selector, user, pkey, 0, 10));
         vm.prank(user);
         bridge.removeStake(10, pkey);
 
@@ -167,7 +168,7 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.totalStaked(), 0);
 
         // address 1337 deposit tokens on the staking bridge
-        vm.expectRevert(BalanceTooLow.selector);
+        vm.expectRevert(abi.encodeWithSelector(StakingBridge.InsufficientBalance.selector, user, pkey, 0, 10));
         vm.prank(user);
         bridge.removeStake(10, pkey);
     }

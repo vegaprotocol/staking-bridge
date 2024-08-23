@@ -46,9 +46,9 @@ contract StakingBridge is IStake {
     /// @param vegaPublicKey Target Vega public key from which to deduct stake
     function removeStake(uint256 amount, bytes32 vegaPublicKey) public {
         uint256 currentStake = stakes[msg.sender][vegaPublicKey];
-        require(
-            amount <= currentStake, InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake)
-        );
+	if (amount > currentStake) {
+            revert InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake);
+        }
         stakes[msg.sender][vegaPublicKey] -= amount;
         token.transfer(msg.sender, amount);
         emit StakeRemoved(msg.sender, amount, vegaPublicKey);
@@ -61,9 +61,9 @@ contract StakingBridge is IStake {
     /// @param vegaPublicKey Target Vega public key to be credited with the transfer
     function transferStake(uint256 amount, address newAddress, bytes32 vegaPublicKey) public {
         uint256 currentStake = stakes[msg.sender][vegaPublicKey];
-        require(
-            amount <= currentStake, InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake)
-        );
+        if (amount > currentStake) {
+            revert InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake);
+        }
         stakes[msg.sender][vegaPublicKey] -= amount;
         stakes[newAddress][vegaPublicKey] += amount;
         emit StakeTransferred(msg.sender, amount, newAddress, vegaPublicKey);

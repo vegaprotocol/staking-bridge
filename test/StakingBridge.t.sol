@@ -3,7 +3,8 @@ pragma solidity ^0.8.13;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {BalanceTooLow, StakingBridge} from "../src/staking-bridge.sol";
+import {StakingBridge} from "../src/StakingBridge.sol";
+import {IStake} from "../src/IStake.sol";
 
 contract TestERC20 is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
@@ -32,7 +33,7 @@ contract StakingBridgeTest is Test {
 
     // Staking Bridge accepts and locks deposited VEGA
     // tokens and emits Stake_Deposited event (0071-STAK-001)
-    function test_LocksTokenAndEmitEvent() public {
+    function test_StakeLocksTokenAndEmitEvent() public {
         bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
         address user = address(1337);
 
@@ -60,6 +61,73 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.totalStaked(), 10);
         assertEq(bridge.stakeBalance(user, pkey), 10);
         assertEq(stakingToken.balanceOf(user), 0);
+    }
+
+    // Staking Bridge accepts and locks deposited VEGA
+    // tokens and emits Stake_Deposited event (0071-STAK-001)
+    function test_Stake2LocksTokenAndEmitEvent() public {
+	bridge.enableTransferStake();
+        bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
+        address user = address(1337);
+	address user2 = address(1338);
+
+        assertEq(bridge.totalStaked(), 0);
+
+        // mint token to address 1337
+        stakingToken.mint(user, 10);
+        assertEq(stakingToken.balanceOf(user), 10);
+
+        // address 1337 approve bridge transfers
+        vm.prank(user);
+        stakingToken.approve(address(bridge), 10);
+
+        // address 1337 deposit tokens on the staking bridge
+        vm.prank(user);
+
+        // check emitted event
+        vm.expectEmit(true, true, true, false);
+        // The event we expect
+        emit StakeDeposited(user, 0, pkey);
+        // check emitted event
+        vm.expectEmit(true, true, true, false);
+        // The event we expect
+        emit StakeTransferred(user, 0, user2, pkey);
+
+        bridge.stake(10, pkey, user2);
+
+        // ensure balances
+        assertEq(bridge.totalStaked(), 10);
+        assertEq(bridge.stakeBalance(user, pkey), 0);
+        assertEq(bridge.stakeBalance(user2, pkey), 10);
+        assertEq(stakingToken.balanceOf(user), 0);
+    }
+
+    // Staking Bridge accepts and locks deposited VEGA
+    // tokens and emits Stake_Deposited event (0071-STAK-001)
+    function test_Stake2FailIfTransferStakeDisabled() public {
+        bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
+        address user = address(1337);
+	address user2 = address(1338);
+
+        assertEq(bridge.totalStaked(), 0);
+
+        // mint token to address 1337
+        stakingToken.mint(user, 10);
+        assertEq(stakingToken.balanceOf(user), 10);
+
+        // address 1337 approve bridge transfers
+        vm.prank(user);
+        stakingToken.approve(address(bridge), 10);
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.TransferStakeDisabled.selector));
+        // address 1337 deposit tokens on the staking bridge
+        vm.prank(user);
+        bridge.stake(10, pkey, user2);
+
+        // ensure balances
+        assertEq(bridge.totalStaked(), 0);
+        assertEq(bridge.stakeBalance(user, pkey), 0);
+        assertEq(bridge.stakeBalance(user2, pkey), 0);
+        assertEq(stakingToken.balanceOf(user), 10);
     }
 
     // Staking Bridge allows only stakers to remove their
@@ -105,6 +173,7 @@ contract StakingBridgeTest is Test {
     // Staking Bridge prohibits users from removing stake
     // they have transfered to other ETH address (0071-STAK-013)
     function test_TransferStakeAndEmitEventThenRemoveStake() public {
+	bridge.enableTransferStake();
         bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
         address user = address(1337);
         address user2 = address(1338);
@@ -139,7 +208,7 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.stakeBalance(user2, pkey), 10);
 
         // now user1 try to removeStake
-        vm.expectRevert(BalanceTooLow.selector);
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.InsufficientBalance.selector, user, pkey, 0, 10));
         vm.prank(user);
         bridge.removeStake(10, pkey);
 
@@ -159,6 +228,36 @@ contract StakingBridgeTest is Test {
         assertEq(stakingToken.balanceOf(user2), 10);
     }
 
+    function test_TransferStakeFailIfDisabled() public {
+        bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
+        address user = address(1337);
+        address user2 = address(1338);
+
+        assertEq(bridge.totalStaked(), 0);
+
+        // mint token to address 1337
+        stakingToken.mint(user, 10);
+        assertEq(stakingToken.balanceOf(user), 10);
+
+        // address 1337 approve bridge transfers
+        vm.prank(user);
+        stakingToken.approve(address(bridge), 10);
+
+        // address 1337 deposit tokens on the staking bridge
+        vm.prank(user);
+        bridge.stake(10, pkey);
+
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.TransferStakeDisabled.selector));
+
+	vm.prank(user);
+        bridge.transferStake(10, user2, pkey);
+
+        // ensure balances
+        assertEq(bridge.totalStaked(), 10);
+        assertEq(stakingToken.balanceOf(user), 0);
+        assertEq(stakingToken.balanceOf(user2), 0);
+    }
+
     // Staking Bridge prohibits users from
     // removing stake they don't own (0071-STAK-012)
     function test_CannotRemoveStakeUserDoNotOwn() public {
@@ -167,7 +266,7 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.totalStaked(), 0);
 
         // address 1337 deposit tokens on the staking bridge
-        vm.expectRevert(BalanceTooLow.selector);
+        vm.expectRevert(abi.encodeWithSelector(StakingBridge.InsufficientBalance.selector, user, pkey, 0, 10));
         vm.prank(user);
         bridge.removeStake(10, pkey);
     }

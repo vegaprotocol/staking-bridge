@@ -66,6 +66,7 @@ contract StakingBridgeTest is Test {
     // Staking Bridge accepts and locks deposited VEGA
     // tokens and emits Stake_Deposited event (0071-STAK-001)
     function test_Stake2LocksTokenAndEmitEvent() public {
+	bridge.enableTransferStake();
         bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
         address user = address(1337);
 	address user2 = address(1338);
@@ -99,6 +100,34 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.stakeBalance(user, pkey), 0);
         assertEq(bridge.stakeBalance(user2, pkey), 10);
         assertEq(stakingToken.balanceOf(user), 0);
+    }
+
+    // Staking Bridge accepts and locks deposited VEGA
+    // tokens and emits Stake_Deposited event (0071-STAK-001)
+    function test_Stake2FailIfTransferStakeDisabled() public {
+        bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
+        address user = address(1337);
+	address user2 = address(1338);
+
+        assertEq(bridge.totalStaked(), 0);
+
+        // mint token to address 1337
+        stakingToken.mint(user, 10);
+        assertEq(stakingToken.balanceOf(user), 10);
+
+        // address 1337 approve bridge transfers
+        vm.prank(user);
+        stakingToken.approve(address(bridge), 10);
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.TransferStakeDisabled.selector));
+        // address 1337 deposit tokens on the staking bridge
+        vm.prank(user);
+        bridge.stake(10, pkey, user2);
+
+        // ensure balances
+        assertEq(bridge.totalStaked(), 0);
+        assertEq(bridge.stakeBalance(user, pkey), 0);
+        assertEq(bridge.stakeBalance(user2, pkey), 0);
+        assertEq(stakingToken.balanceOf(user), 10);
     }
 
     // Staking Bridge allows only stakers to remove their
@@ -144,6 +173,7 @@ contract StakingBridgeTest is Test {
     // Staking Bridge prohibits users from removing stake
     // they have transfered to other ETH address (0071-STAK-013)
     function test_TransferStakeAndEmitEventThenRemoveStake() public {
+	bridge.enableTransferStake();
         bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
         address user = address(1337);
         address user2 = address(1338);
@@ -196,6 +226,36 @@ contract StakingBridgeTest is Test {
         assertEq(bridge.totalStaked(), 0);
         assertEq(stakingToken.balanceOf(user), 0);
         assertEq(stakingToken.balanceOf(user2), 10);
+    }
+
+    function test_TransferStakeFailIfDisabled() public {
+        bytes32 pkey = 0x17a33504a3f676fe940d629da5105402df8c4b8d9d2665c02ed280abb0aa4278;
+        address user = address(1337);
+        address user2 = address(1338);
+
+        assertEq(bridge.totalStaked(), 0);
+
+        // mint token to address 1337
+        stakingToken.mint(user, 10);
+        assertEq(stakingToken.balanceOf(user), 10);
+
+        // address 1337 approve bridge transfers
+        vm.prank(user);
+        stakingToken.approve(address(bridge), 10);
+
+        // address 1337 deposit tokens on the staking bridge
+        vm.prank(user);
+        bridge.stake(10, pkey);
+
+	vm.expectRevert(abi.encodeWithSelector(StakingBridge.TransferStakeDisabled.selector));
+
+	vm.prank(user);
+        bridge.transferStake(10, user2, pkey);
+
+        // ensure balances
+        assertEq(bridge.totalStaked(), 10);
+        assertEq(stakingToken.balanceOf(user), 0);
+        assertEq(stakingToken.balanceOf(user2), 0);
     }
 
     // Staking Bridge prohibits users from

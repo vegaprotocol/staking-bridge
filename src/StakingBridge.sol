@@ -3,24 +3,33 @@ pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IStake} from "./IStake.sol";
 
 /// @title ERC20 Staking Bridge
 /// @author Vega Protocol
 /// @notice This contract manages the vesting of the Vega V2 ERC20 token
-contract StakingBridge is IStake {
+contract StakingBridge is IStake, Ownable {
     using SafeERC20 for IERC20;
 
     error InsufficientBalance(address user, bytes32 vegaPublicKey, uint256 stakeBalance, uint256 needed);
+    error TransferStakeDisabled();
 
     IERC20 public immutable token;
+    bool public transferStakeEnabled;
 
-    constructor(address tokenAddress) {
+    constructor(address tokenAddress) Ownable(msg.sender) {
         token = IERC20(tokenAddress);
+	transferStakeEnabled = false;
     }
 
     /// @dev user => amount staked
     mapping(address user => mapping(bytes32 vegaPublicKey => uint256 stakingBalance)) stakes;
+
+
+    function enableTransferStake() public onlyOwner {
+	transferStakeEnabled = true;
+    }
 
     /// @notice This stakes the given amount of tokens and credits them to the provided Vega public key
     /// @param amount Token amount to stake
@@ -34,6 +43,9 @@ contract StakingBridge is IStake {
     }
 
     function stake(uint256 amount, bytes32 vegaPublicKey, address owner) public {
+	if (!transferStakeEnabled) {
+	    revert TransferStakeDisabled();
+	}
         token.transferFrom(msg.sender, address(this), amount);
         stakes[owner][vegaPublicKey] += amount;
         emit StakeDeposited(msg.sender, amount, vegaPublicKey);
@@ -60,7 +72,10 @@ contract StakingBridge is IStake {
     /// @param newAddress Target ETH address to recieve the stake
     /// @param vegaPublicKey Target Vega public key to be credited with the transfer
     function transferStake(uint256 amount, address newAddress, bytes32 vegaPublicKey) public {
-        uint256 currentStake = stakes[msg.sender][vegaPublicKey];
+	if (!transferStakeEnabled) {
+	    revert TransferStakeDisabled();
+	}
+	uint256 currentStake = stakes[msg.sender][vegaPublicKey];
         if (amount > currentStake) {
             revert InsufficientBalance(msg.sender, vegaPublicKey, currentStake, amount - currentStake);
         }
